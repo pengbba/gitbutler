@@ -175,6 +175,10 @@ pub enum Code {
     GitLabUnauthorized,
     /// GitLab returned HTTP 403 while validating a personal access token.
     GitLabForbidden,
+    /// Gitee returned HTTP 401 while validating a personal access token.
+    GiteeUnauthorized,
+    /// Gitee returned HTTP 403 while validating a personal access token.
+    GiteeForbidden,
     /// The self-hosted GitLab host is not an absolute URL, so no request could be built.
     GitLabInvalidHost,
     /// A GitHub organization has enabled OAuth App access restrictions and
