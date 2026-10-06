@@ -62,6 +62,8 @@ pub use utils::binary_path::is_executed_as_but;
 mod alias;
 /// A place for all command implementations.
 pub(crate) mod command;
+#[cfg(feature = "legacy")]
+pub use command::legacy::status::{FilesStatusFlag, StatusFlags, json as status, workspace_status};
 mod retired_syntax;
 pub mod theme;
 mod tui;
@@ -1009,8 +1011,9 @@ async fn dispatch_subcommand(
                     let outcome = command::worktree::remove::remove(&mut ctx, &worktree, force)?;
                     out.print_cli_output(outcome)?;
                 }
-                worktree::Subcommands::New { name } => {
-                    let outcome = command::worktree::new::new(&mut ctx, name.as_ref())?;
+                worktree::Subcommands::New { name, above } => {
+                    let outcome =
+                        command::worktree::new::new(&mut ctx, name.as_ref(), above.as_ref())?;
                     out.print_cli_output(outcome)?;
                 }
             }
@@ -1120,7 +1123,7 @@ async fn dispatch_subcommand(
         Subcommands::Switch(switch_args) => {
             use crate::utils::IntermediateChannel;
 
-            let outcome = command::legacy::r#switch::switch(
+            let outcome = command::legacy::switch::switch(
                 &mut ctx,
                 IntermediateChannel::new(out),
                 switch_args,

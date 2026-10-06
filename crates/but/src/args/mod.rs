@@ -331,8 +331,11 @@ pub enum Subcommands {
     /// is pushed to the remote. After merging, the remaining applied branches are reconciled onto
     /// the moved target, just like `but pull`.
     ///
-    /// Requires an active GitButler workspace. Updating the target is direct and not easily
-    /// reversible, so a confirmation is required (use `--yes` to skip it in scripts).
+    /// Requires the GitButler workspace or, in single-branch mode, a checked-out branch. In
+    /// single-branch mode, merging the checked-out branch checks out the target branch afterwards,
+    /// like `but pull` does once a branch is merged upstream, or a generated branch when the target
+    /// can't be reused; the output names the branch checked out. Updating the target is direct and
+    /// not easily reversible, so a confirmation is required (use `--yes` to skip it in scripts).
     ///
     /// When NOT to use this: if your project merges changes through pull requests / code review,
     /// use `but push` and open a PR (`but pr new`) instead — `but merge` deliberately bypasses that
@@ -831,7 +834,7 @@ pub enum Subcommands {
     #[cfg(feature = "legacy")]
     #[cfg_attr(feature = "raw-clap-docs", clap(verbatim_doc_comment))]
     #[clap(hide = true)]
-    Switch(r#switch::Platform),
+    Switch(switch::Platform),
 
     /// Manage AI agent skills for GitButler.
     ///
@@ -1042,7 +1045,7 @@ pub mod split;
 #[cfg(feature = "legacy")]
 pub mod squash;
 #[cfg(feature = "legacy")]
-pub mod r#switch;
+pub mod switch;
 #[cfg(feature = "legacy")]
 pub mod tui;
 #[cfg(feature = "legacy")]

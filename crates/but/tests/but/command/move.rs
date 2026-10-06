@@ -53,12 +53,13 @@ Hint: run `but help` for all commands
 
 "#]]
     );
-    env.but("move suw --above source -b moved").assert().failure()
+    env.but("move suw --above source -b moved")
+        .assert()
+        .failure()
         .stderr_eq(snapbox::str![[r#"
-Error: Could not safely check out 'refs/heads/moved' from ae5714b53ad5051b29a9dc69d1f18bd5c4b745f1 to cf2bcd3b5b19b9d7214efe41eba4bae642252d95
+Error: Cannot check out a conflicted commit.
 
-Caused by:
-    Refusing to check out conflicted commit cf2bcd3b5b19b9d7214efe41eba4bae642252d95
+Hint: Run `but switch --workspace` and start conflict resolution with `but resolve`
 
 "#]]);
     // A failed checkout must restore the original source refs and leave no destination branch.
@@ -155,10 +156,9 @@ Hint: run `but help` for all commands
         .assert()
         .failure()
         .stderr_eq(snapbox::str![[r#"
-Error: Could not safely check out 'refs/heads/first' from [..] to [..]
+Error: Cannot check out a conflicted commit.
 
-Caused by:
-    Refusing to check out conflicted commit [..]
+Hint: Run `but switch --workspace` and start conflict resolution with `but resolve`
 
 "#]]);
     // Restacking existing branches must also roll back every rewritten ref and branch order.
@@ -4802,6 +4802,65 @@ Moved nsn to the tip of branch 'B'
     );
 }
 
+/// Worktrees fork from the commit they were created at, not from the branch that names it.
+/// A commit moved onto that branch therefore goes under neither of them: the worktree it came
+/// from gives it up, and the other worktree stays where it was.
+#[test]
+fn move_a_worktree_commit_onto_the_branch_worktrees_fork_from() {
+    let env = Sandbox::open_with_default_settings("single-branch-mode");
+    enable_worktree_manipulation(&env);
+    env.but("status").assert().success();
+    let wt = env.app_data_dir().join("worktrees");
+    but_testsupport::invoke_bash_at_dir(
+        &format!(
+            r#"
+        git checkout -q -b feature
+        git worktree add -q -b wt-one "{wt}/wt-one" feature
+        (cd "{wt}/wt-one" && echo one >one.txt && git add one.txt && git commit -q -m "add W1")
+        git worktree add -q -b wt-two "{wt}/wt-two" feature
+        (cd "{wt}/wt-two" && echo two >two.txt && git add two.txt && git commit -q -m "add W2")
+        "#,
+            wt = wt.display()
+        ),
+        env.projects_root(),
+    );
+
+    snapbox::assert_data_eq!(
+        env.git_log(),
+        snapbox::str![[r#"
+* 41a4583 (wt-one) add W1
+| * 9880b01 (wt-two) add W2
+|/  
+* b1540e5 (HEAD -> feature, origin/main, origin/HEAD, main) M
+* e31e6ca add init
+
+"#]]
+        .raw()
+    );
+
+    env.but("move 41a4583 -b feature")
+        .assert()
+        .success()
+        .stderr_eq(snapbox::str![])
+        .stdout_eq(snapbox::str![[r#"
+Moved zqt to the tip of branch 'feature'
+
+"#]]);
+
+    snapbox::assert_data_eq!(
+        env.git_log(),
+        snapbox::str![[r#"
+* 41a4583 (HEAD -> feature) add W1
+| * 9880b01 (wt-two) add W2
+|/  
+* b1540e5 (origin/main, origin/HEAD, wt-one, main, gitbutler/target) M
+* e31e6ca add init
+
+"#]]
+        .raw()
+    );
+}
+
 /// `--below` a worktree heading moves the commit to the tip of the branch that worktree has
 /// checked out, taking it out of the workspace.
 #[test]
@@ -5552,5 +5611,142 @@ Hint: run `but help` for all commands
 
 "#]]
         .raw()
+    );
+}
+
+#[test]
+fn move_cannot_create_and_switch_to_conflicted_branch() {
+    let env = Sandbox::init_scenario_with_target_and_default_settings("zero-stacks");
+
+    env.file("file", "content");
+    env.but("commit -b A -m 'add file'").assert().success();
+
+    env.file("file", "new content");
+    env.but("commit -b A -m 'change file'").assert().success();
+
+    env.but("status")
+        .assert()
+        .success()
+        .stdout_eq(snapbox::str![[r#"
+╭┄ @ [uncommitted] (no changes)
+┊
+┊╭┄ g0 [A]
+┊●   oxm change file
+┊●   oln add file
+├╯
+┊
+┴ 0dc3733 (common base, main, origin/main) 2000-01-02 add M
+
+Hint: run `but help` for all commands
+
+"#]]);
+
+    env.but("move oxm -b B --switch")
+        .assert()
+        .failure()
+        .stderr_eq(snapbox::str![[r#"
+Error: Cannot check out a conflicted commit.
+
+Hint: Run `but switch --workspace` and start conflict resolution with `but resolve`
+
+"#]]);
+
+    assert!(
+        env.open_repo()
+            .try_find_reference("refs/heads/B")
+            .unwrap()
+            .is_none(),
+        "the failed move rolls back creation of the destination branch"
+    );
+
+    // The failed checkout rolls back the move, preserving A's history.
+    env.but("status")
+        .assert()
+        .success()
+        .stdout_eq(snapbox::str![[r#"
+╭┄ @ [uncommitted] (no changes)
+┊
+┊╭┄ g0 [A]
+┊●   oxm change file
+┊●   oln add file
+├╯
+┊
+┴ 0dc3733 (common base, main, origin/main) 2000-01-02 add M
+
+Hint: run `but help` for all commands
+
+"#]]);
+}
+
+#[test]
+fn moving_commits_around_causing_conflicts_in_sbm() {
+    let env = Sandbox::init_scenario_with_target_and_default_settings("zero-stacks");
+
+    env.file("file", "content");
+    env.but("commit -b A -m 'add file' --switch")
+        .assert()
+        .success();
+
+    env.file("file", "new content");
+    env.but("commit -b A -m 'change file'").assert().success();
+
+    env.but("status")
+        .assert()
+        .success()
+        .stdout_eq(snapbox::str![[r#"
+╭┄ @ [uncommitted] (no changes)
+┊
+┊╭┄ g0 [A] [HEAD]
+┊●   oxm change file
+┊●   oln add file
+├╯
+┊
+┴ 0dc3733 (common base, main, origin/main) 2000-01-02 add M
+
+Hint: run `but help` for all commands
+
+"#]]);
+
+    env.but("move oln --above oxm").assert().success();
+
+    env.but("status")
+        .assert()
+        .success()
+        .stdout_eq(snapbox::str![[r#"
+╭┄ @ [uncommitted] (no changes)
+┊
+┊╭┄ g0 [A] [HEAD]
+┊●   oln add file
+┊●   oxm change file (no changes) {conflicted}
+├╯
+┊
+┴ 0dc3733 (common base, main, origin/main) 2000-01-02 add M
+
+Hint: run `but help` for all commands
+
+"#]]);
+
+    let head_before = env.invoke_git("rev-parse HEAD");
+    let head_ref_before = env.invoke_git("symbolic-ref HEAD");
+
+    env.but("discard oln")
+        .assert()
+        .failure()
+        .stderr_eq(snapbox::str![[r#"
+Error: Cannot check out a conflicted commit.
+
+Hint: Run `but switch --workspace` and start conflict resolution with `but resolve`
+
+"#]]);
+
+    assert_eq!(
+        env.invoke_git("rev-parse HEAD"),
+        head_before,
+        "the rejected discard preserves the branch tip and its history"
+    );
+    assert_eq!(
+        env.invoke_git("symbolic-ref HEAD"),
+        head_ref_before,
+        "the rejected discard keeps the same branch checked out"
     );
 }

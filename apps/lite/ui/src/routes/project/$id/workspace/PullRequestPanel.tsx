@@ -27,6 +27,7 @@ import { Tag } from "@gitbutler/ui-react/Tag.tsx";
 import { RelativeTime } from "@gitbutler/ui-react/RelativeTime.tsx";
 import type { IconName } from "@gitbutler/ui-react/iconNames.ts";
 import { Tooltip } from "@gitbutler/ui-react/Tooltip.tsx";
+import { ScrollArea } from "@gitbutler/ui-react/ScrollArea.tsx";
 import {
 	type NativeMenuItem,
 	nativeMenuItem,
@@ -539,16 +540,13 @@ const ChecksSection: FC<{ projectId: string; reference: string }> = ({ projectId
 			}
 		>
 			<div className={styles.checksDivider} />
-			<section
-				className={styles.checksList}
-				aria-label="Check jobs"
-				// oxlint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- Let keyboard users focus and scroll the job list.
-				tabIndex={0}
-			>
-				{data?.checks.map((check) => (
-					<CheckRow key={check.id} check={check} />
-				))}
-			</section>
+			<ScrollArea className={styles.checksList} viewportClassName={styles.checksViewport}>
+				<section aria-label="Check jobs">
+					{data?.checks.map((check) => (
+						<CheckRow key={check.id} check={check} />
+					))}
+				</section>
+			</ScrollArea>
 		</Section>
 	);
 };
@@ -777,7 +775,7 @@ export const PullRequestPanel: FC<{
 
 	const status = reviewStatus(review);
 	// A merged review is final; anything else can move between open, draft and
-	// closed from the status badge.
+	// closed from the Status section's menu.
 	const canSwitchStatus = status !== "merged";
 	const isStatusPending = isDraftinessPending || isUpdateReviewPending;
 
@@ -890,7 +888,6 @@ export const PullRequestPanel: FC<{
 		<Badge variant={statusVariant} size="large">
 			<Icon name={statusIcon} size={12} />
 			{statusLabel}
-			{canSwitchStatus && <Icon name="chevron-down" size={12} />}
 		</Badge>
 	);
 
@@ -909,23 +906,23 @@ export const PullRequestPanel: FC<{
 					heading="Status"
 					action={
 						<div className={styles.statusActions}>
-							{canSwitchStatus ? (
-								<button
-									aria-label="Change status"
-									className={styles.statusTrigger}
-									disabled={isStatusPending}
-									onClick={openStatusMenu}
-									type="button"
-								>
-									{statusBadge}
-								</button>
-							) : (
-								statusBadge
-							)}
+							{statusBadge}
 							<TextLink href={review.htmlUrl} className="text-12" onClick={openLinkExternally}>
 								{review.unitSymbol}
 								{review.number}
 							</TextLink>
+							{canSwitchStatus && (
+								<Button
+									aria-label="Change status"
+									variant="ghost"
+									size="small"
+									iconOnly
+									disabled={isStatusPending}
+									onClick={openStatusMenu}
+								>
+									<Icon name="chevron-down" />
+								</Button>
+							)}
 						</div>
 					}
 				>
